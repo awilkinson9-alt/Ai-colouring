@@ -495,8 +495,11 @@ const App = () => {
 
   const getCanvasCoords = (e) => {
     const rect = linesCanvasRef.current.getBoundingClientRect();
-    const visualX = e.clientX - rect.left;
-    const visualY = e.clientY - rect.top;
+    // Support both mouse and touch events
+    const clientX = e.clientX !== undefined ? e.clientX : (e.touches && e.touches[0] ? e.touches[0].clientX : 0);
+    const clientY = e.clientY !== undefined ? e.clientY : (e.touches && e.touches[0] ? e.touches[0].clientY : 0);
+    const visualX = clientX - rect.left;
+    const visualY = clientY - rect.top;
     const canvasWidth = linesCanvasRef.current.width;
     const canvasHeight = linesCanvasRef.current.height;
     let x = (visualX / rect.width) * canvasWidth;
@@ -508,9 +511,12 @@ const App = () => {
 
   const startInteraction = (e) => {
     if (!imageLoaded) return;
+    e.preventDefault(); // Prevent scrolling on touch devices
     const coords = getCanvasCoords(e);
     isInteractingRef.current = true;
-    lastPointRef.current = { ...coords, rawX: e.clientX, rawY: e.clientY };
+    const clientX = e.clientX !== undefined ? e.clientX : (e.touches && e.touches[0] ? e.touches[0].clientX : 0);
+    const clientY = e.clientY !== undefined ? e.clientY : (e.touches && e.touches[0] ? e.touches[0].clientY : 0);
+    lastPointRef.current = { ...coords, rawX: clientX, rawY: clientY };
 
     // Save state before any operation for proper undo
     if (tool === 'bucket' || tool === 'brush') {
@@ -528,11 +534,14 @@ const App = () => {
 
   const handlePointerMove = (e) => {
     if (!isInteractingRef.current) return;
+    e.preventDefault(); // Prevent scrolling on touch devices
+    const clientX = e.clientX !== undefined ? e.clientX : (e.touches && e.touches[0] ? e.touches[0].clientX : 0);
+    const clientY = e.clientY !== undefined ? e.clientY : (e.touches && e.touches[0] ? e.touches[0].clientY : 0);
     if (tool === 'hand') {
-      const dx = e.clientX - lastPointRef.current.rawX;
-      const dy = e.clientY - lastPointRef.current.rawY;
+      const dx = clientX - lastPointRef.current.rawX;
+      const dy = clientY - lastPointRef.current.rawY;
       setPan(prev => ({ x: prev.x + dx / zoom, y: prev.y + dy / zoom }));
-      lastPointRef.current = { ...lastPointRef.current, rawX: e.clientX, rawY: e.clientY };
+      lastPointRef.current = { ...lastPointRef.current, rawX: clientX, rawY: clientY };
     } else if (tool === 'brush') {
       const coords = getCanvasCoords(e);
       draw(coords.x, coords.y);
@@ -794,20 +803,31 @@ const App = () => {
   };
 
   return (
-    <div className="min-h-screen bg-amber-50 font-sans text-slate-800 p-4 md:p-8 flex flex-col items-center">
-      <div className="max-w-4xl w-full text-center mb-6">
-        <h1 className="text-4xl md:text-5xl font-black text-orange-500 flex items-center justify-center gap-3 drop-shadow-sm uppercase tracking-tighter">
-          <Palette className="w-10 h-10" /> AI Coloring Magic
+    <div className="min-h-screen bg-amber-50 font-sans text-slate-800 p-2 sm:p-4 md:p-8 flex flex-col items-center">
+      <div className="max-w-4xl w-full text-center mb-3 sm:mb-6">
+        <h1 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-black text-orange-500 flex items-center justify-center gap-2 sm:gap-3 drop-shadow-sm uppercase tracking-tighter">
+          <Palette className="w-6 h-6 sm:w-8 sm:h-8 md:w-10 md:h-10" /> AI Coloring Magic
         </h1>
       </div>
 
-      <div className="max-w-7xl w-full grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-        <div className="lg:col-span-4 space-y-4 order-2 lg:order-1">
-          <div className="bg-white p-5 rounded-3xl shadow-lg border-4 border-white">
+      <div className="max-w-7xl w-full grid grid-cols-1 lg:grid-cols-12 gap-3 sm:gap-4 md:gap-6 items-start">
+        <div className="lg:col-span-4 space-y-3 sm:space-y-4 order-2 lg:order-1">
+          <div className="bg-white p-3 sm:p-4 md:p-5 rounded-2xl sm:rounded-3xl shadow-lg border-2 sm:border-4 border-white">
             <div className="flex gap-2">
-              <input type="text" value={prompt} onChange={(e) => setPrompt(e.target.value)} placeholder="A happy dragon..." className="flex-1 bg-slate-100 border-none rounded-2xl px-4 py-3 outline-none transition-all font-medium" onKeyDown={(e) => e.key === 'Enter' && generateImage()}/>
-              <button onClick={generateImage} disabled={isGenerating || !prompt.trim()} className="p-3 bg-orange-500 hover:bg-orange-600 disabled:bg-slate-200 text-white rounded-2xl shadow-md active:scale-95 transition-transform">
-                {isGenerating ? <Loader2 className="animate-spin" /> : <Search />}
+              <input 
+                type="text" 
+                value={prompt} 
+                onChange={(e) => setPrompt(e.target.value)} 
+                placeholder="A happy dragon..." 
+                className="flex-1 bg-slate-100 border-none rounded-xl sm:rounded-2xl px-3 sm:px-4 py-2 sm:py-3 text-sm sm:text-base outline-none transition-all font-medium" 
+                onKeyDown={(e) => e.key === 'Enter' && generateImage()}
+              />
+              <button 
+                onClick={generateImage} 
+                disabled={isGenerating || !prompt.trim()} 
+                className="p-2 sm:p-3 bg-orange-500 hover:bg-orange-600 disabled:bg-slate-200 text-white rounded-xl sm:rounded-2xl shadow-md active:scale-95 transition-transform min-w-[44px] min-h-[44px] flex items-center justify-center"
+              >
+                {isGenerating ? <Loader2 className="animate-spin w-5 h-5 sm:w-6 sm:h-6" /> : <Search className="w-5 h-5 sm:w-6 sm:h-6" />}
               </button>
             </div>
             {isCached && (
@@ -817,22 +837,53 @@ const App = () => {
             )}
           </div>
 
-          <div className="bg-white p-5 rounded-3xl shadow-lg border-4 border-white">
-            <h2 className="text-xs font-bold text-slate-400 mb-3 uppercase tracking-widest flex items-center gap-2"><ZoomIn size={14}/> Zoom Tool</h2>
-            <div className="flex items-center gap-4">
-              <input type="range" min="1" max="4" step="0.1" value={zoom} onChange={(e) => setZoom(parseFloat(e.target.value))} className="flex-1 accent-orange-500"/>
-              <button onClick={() => { setZoom(1); setPan({x:0, y:0}); }} className="text-xs font-bold text-orange-500 bg-orange-50 px-3 py-2 rounded-xl border border-orange-200">Reset</button>
+          <div className="bg-white p-3 sm:p-4 md:p-5 rounded-2xl sm:rounded-3xl shadow-lg border-2 sm:border-4 border-white">
+            <h2 className="text-xs font-bold text-slate-400 mb-2 sm:mb-3 uppercase tracking-widest flex items-center gap-2"><ZoomIn size={12} className="sm:w-3.5 sm:h-3.5"/> Zoom Tool</h2>
+            <div className="flex items-center gap-2 sm:gap-4">
+              <input 
+                type="range" 
+                min="1" 
+                max="4" 
+                step="0.1" 
+                value={zoom} 
+                onChange={(e) => setZoom(parseFloat(e.target.value))} 
+                className="flex-1 accent-orange-500 h-2 sm:h-3"
+              />
+              <button 
+                onClick={() => { setZoom(1); setPan({x:0, y:0}); }} 
+                className="text-xs font-bold text-orange-500 bg-orange-50 px-2 sm:px-3 py-1.5 sm:py-2 rounded-lg sm:rounded-xl border border-orange-200 min-h-[44px]"
+              >
+                Reset
+              </button>
             </div>
           </div>
 
-          <div className="bg-white p-5 rounded-3xl shadow-lg border-4 border-white">
-            <div className="grid grid-cols-3 gap-2 mb-4">
-              <button onClick={() => setTool('brush')} className={`flex flex-col items-center justify-center gap-1 p-3 rounded-2xl font-bold border-b-4 transition-all ${tool === 'brush' ? 'bg-orange-500 text-white border-orange-700 -translate-y-1' : 'bg-slate-100 text-slate-500 border-slate-200 hover:bg-slate-200'}`}><Brush size={20}/> <span className="text-[10px]">Brush</span></button>
-              <button onClick={() => setTool('bucket')} className={`flex flex-col items-center justify-center gap-1 p-3 rounded-2xl font-bold border-b-4 transition-all ${tool === 'bucket' ? 'bg-blue-500 text-white border-blue-700 -translate-y-1' : 'bg-slate-100 text-slate-500 border-slate-200 hover:bg-slate-200'}`}><PaintBucket size={20}/> <span className="text-[10px]">Fill</span></button>
-              <button onClick={() => setTool('hand')} className={`flex flex-col items-center justify-center gap-1 p-3 rounded-2xl font-bold border-b-4 transition-all ${tool === 'hand' ? 'bg-purple-500 text-white border-purple-700 -translate-y-1' : 'bg-slate-100 text-slate-500 border-slate-200 hover:bg-slate-200'}`}><Move size={20}/> <span className="text-[10px]">Move</span></button>
+          <div className="bg-white p-3 sm:p-4 md:p-5 rounded-2xl sm:rounded-3xl shadow-lg border-2 sm:border-4 border-white">
+            <div className="grid grid-cols-3 gap-2 mb-3 sm:mb-4">
+              <button 
+                onClick={() => setTool('brush')} 
+                className={`flex flex-col items-center justify-center gap-1 p-2 sm:p-3 rounded-xl sm:rounded-2xl font-bold border-b-2 sm:border-b-4 transition-all min-h-[60px] sm:min-h-[80px] ${tool === 'brush' ? 'bg-orange-500 text-white border-orange-700 -translate-y-1' : 'bg-slate-100 text-slate-500 border-slate-200 hover:bg-slate-200'}`}
+              >
+                <Brush size={18} className="sm:w-5 sm:h-5"/> 
+                <span className="text-[10px] sm:text-xs">Brush</span>
+              </button>
+              <button 
+                onClick={() => setTool('bucket')} 
+                className={`flex flex-col items-center justify-center gap-1 p-2 sm:p-3 rounded-xl sm:rounded-2xl font-bold border-b-2 sm:border-b-4 transition-all min-h-[60px] sm:min-h-[80px] ${tool === 'bucket' ? 'bg-blue-500 text-white border-blue-700 -translate-y-1' : 'bg-slate-100 text-slate-500 border-slate-200 hover:bg-slate-200'}`}
+              >
+                <PaintBucket size={18} className="sm:w-5 sm:h-5"/> 
+                <span className="text-[10px] sm:text-xs">Fill</span>
+              </button>
+              <button 
+                onClick={() => setTool('hand')} 
+                className={`flex flex-col items-center justify-center gap-1 p-2 sm:p-3 rounded-xl sm:rounded-2xl font-bold border-b-2 sm:border-b-4 transition-all min-h-[60px] sm:min-h-[80px] ${tool === 'hand' ? 'bg-purple-500 text-white border-purple-700 -translate-y-1' : 'bg-slate-100 text-slate-500 border-slate-200 hover:bg-slate-200'}`}
+              >
+                <Move size={18} className="sm:w-5 sm:h-5"/> 
+                <span className="text-[10px] sm:text-xs">Move</span>
+              </button>
             </div>
             {tool === 'brush' && (
-              <div className="mt-4 pt-4 border-t border-slate-200">
+              <div className="mt-3 sm:mt-4 pt-3 sm:pt-4 border-t border-slate-200">
                 <label className="text-xs font-bold text-slate-400 mb-2 block uppercase tracking-widest">Brush Size</label>
                 <input 
                   type="range" 
@@ -841,48 +892,53 @@ const App = () => {
                   step="5" 
                   value={brushSize} 
                   onChange={(e) => setBrushSize(parseInt(e.target.value))} 
-                  className="w-full accent-orange-500"
+                  className="w-full accent-orange-500 h-2 sm:h-3"
                 />
                 <div className="text-xs text-slate-500 text-center mt-1">{brushSize}px</div>
               </div>
             )}
           </div>
 
-          <div className="bg-white p-5 rounded-3xl shadow-lg border-4 border-white grid grid-cols-6 gap-2">
+          <div className="bg-white p-3 sm:p-4 md:p-5 rounded-2xl sm:rounded-3xl shadow-lg border-2 sm:border-4 border-white grid grid-cols-6 sm:grid-cols-6 gap-1.5 sm:gap-2">
             {COLORS.map((color) => (
-              <button key={color} onClick={() => setSelectedColor(color)} className={`w-full aspect-square rounded-full border-4 transition-all ${selectedColor === color ? 'border-slate-800 scale-110 shadow-md rotate-6' : 'border-transparent hover:scale-110'}`} style={{ backgroundColor: color }} />
+              <button 
+                key={color} 
+                onClick={() => setSelectedColor(color)} 
+                className={`w-full aspect-square rounded-full border-2 sm:border-4 transition-all min-h-[36px] sm:min-h-[44px] ${selectedColor === color ? 'border-slate-800 scale-110 shadow-md rotate-6' : 'border-transparent hover:scale-110'}`} 
+                style={{ backgroundColor: color }} 
+              />
             ))}
           </div>
 
           {/* Sidebar Actions */}
-          <div className="bg-white p-4 rounded-3xl shadow-lg border-4 border-white flex gap-2">
+          <div className="bg-white p-3 sm:p-4 rounded-2xl sm:rounded-3xl shadow-lg border-2 sm:border-4 border-white flex gap-2">
              <button 
                 onClick={handleSave} 
                 disabled={!imageLoaded} 
-                className="flex-1 bg-green-500 hover:bg-green-600 p-4 rounded-2xl shadow-md font-bold text-white border-b-4 border-green-700 active:translate-y-1 active:border-b-0 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+                className="flex-1 bg-green-500 hover:bg-green-600 p-3 sm:p-4 rounded-xl sm:rounded-2xl shadow-md font-bold text-white border-b-2 sm:border-b-4 border-green-700 active:translate-y-1 active:border-b-0 transition-all flex items-center justify-center gap-2 disabled:opacity-50 text-sm sm:text-base min-h-[44px]"
               >
-                <Download size={20} /> Save
+                <Download size={18} className="sm:w-5 sm:h-5" /> <span className="hidden sm:inline">Save</span>
               </button>
               <button 
                 onClick={handlePrint} 
                 disabled={!imageLoaded} 
-                className="flex-1 bg-blue-500 hover:bg-blue-600 p-4 rounded-2xl shadow-md font-bold text-white border-b-4 border-blue-700 active:translate-y-1 active:border-b-0 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+                className="flex-1 bg-blue-500 hover:bg-blue-600 p-3 sm:p-4 rounded-xl sm:rounded-2xl shadow-md font-bold text-white border-b-2 sm:border-b-4 border-blue-700 active:translate-y-1 active:border-b-0 transition-all flex items-center justify-center gap-2 disabled:opacity-50 text-sm sm:text-base min-h-[44px]"
               >
-                <Printer size={20} /> Print
+                <Printer size={18} className="sm:w-5 sm:h-5" /> <span className="hidden sm:inline">Print</span>
               </button>
           </div>
         </div>
 
-        <div className="lg:col-span-8 space-y-4 order-1 lg:order-2">
+        <div className="lg:col-span-8 space-y-3 sm:space-y-4 order-1 lg:order-2">
           {/* Progress Bar */}
-          <div className="bg-white p-4 rounded-3xl shadow-xl border-4 border-white">
-            <div className="flex items-center justify-between mb-2 px-2">
-              <span className="text-sm font-black text-slate-500 uppercase tracking-widest">Masterpiece Meter</span>
-              <span className="text-xl font-bold flex items-center gap-1">
+          <div className="bg-white p-3 sm:p-4 rounded-2xl sm:rounded-3xl shadow-xl border-2 sm:border-4 border-white">
+            <div className="flex items-center justify-between mb-2 px-1 sm:px-2">
+              <span className="text-xs sm:text-sm font-black text-slate-500 uppercase tracking-widest">Masterpiece Meter</span>
+              <span className="text-lg sm:text-xl font-bold flex items-center gap-1">
                 {getProgressIcon()} {progress}%
               </span>
             </div>
-            <div className="h-6 bg-slate-100 rounded-full overflow-hidden border-2 border-slate-100">
+            <div className="h-5 sm:h-6 bg-slate-100 rounded-full overflow-hidden border-2 border-slate-100">
               <div 
                 className="h-full bg-gradient-to-r from-yellow-400 via-orange-500 to-pink-500 transition-all duration-500 ease-out flex items-center justify-end px-2"
                 style={{ width: `${progress}%` }}
@@ -898,34 +954,45 @@ const App = () => {
             </div>
           )}
 
-          <div ref={containerRef} className="relative bg-white p-2 rounded-[40px] shadow-2xl border-8 border-white ring-4 ring-orange-100 w-full max-w-[600px] aspect-square overflow-hidden cursor-crosshair">
+          <div ref={containerRef} className="relative bg-white p-1 sm:p-2 rounded-2xl sm:rounded-[40px] shadow-2xl border-4 sm:border-8 border-white ring-2 sm:ring-4 ring-orange-100 w-full max-w-[600px] aspect-square overflow-hidden cursor-crosshair">
             {isGenerating && (
-              <div className="absolute inset-0 z-30 bg-white/90 backdrop-blur-sm flex flex-col items-center justify-center">
-                <Loader2 className="w-12 h-12 text-orange-500 animate-spin mb-4" />
-                <h3 className="text-2xl font-black text-slate-700">Magical Art in Progress...</h3>
+              <div className="absolute inset-0 z-30 bg-white/90 backdrop-blur-sm flex flex-col items-center justify-center px-4">
+                <Loader2 className="w-10 h-10 sm:w-12 sm:h-12 text-orange-500 animate-spin mb-3 sm:mb-4" />
+                <h3 className="text-lg sm:text-2xl font-black text-slate-700 text-center">Magical Art in Progress...</h3>
               </div>
             )}
             <div style={{ transform: `scale(${zoom}) translate(${pan.x}px, ${pan.y}px)`, transformOrigin: 'center center', transition: isInteractingRef.current ? 'none' : 'transform 0.1s ease-out', willChange: 'transform', imageRendering: 'crisp-edges', WebkitImageRendering: 'crisp-edges' }} className="absolute inset-0 w-full h-full">
               <canvas ref={drawCanvasRef} style={{ imageRendering: 'crisp-edges', WebkitImageRendering: 'crisp-edges' }} className="absolute inset-0 w-full h-full bg-white pointer-events-none" />
-              <canvas ref={linesCanvasRef} style={{ imageRendering: 'crisp-edges', WebkitImageRendering: 'crisp-edges' }} onPointerDown={startInteraction} onPointerMove={handlePointerMove} onPointerUp={stopInteraction} onPointerLeave={stopInteraction} className="absolute inset-0 w-full h-full touch-none" />
+              <canvas 
+                ref={linesCanvasRef} 
+                style={{ imageRendering: 'crisp-edges', WebkitImageRendering: 'crisp-edges', touchAction: 'none' }} 
+                onPointerDown={startInteraction} 
+                onPointerMove={handlePointerMove} 
+                onPointerUp={stopInteraction} 
+                onPointerLeave={stopInteraction}
+                onTouchStart={startInteraction}
+                onTouchMove={handlePointerMove}
+                onTouchEnd={stopInteraction}
+                className="absolute inset-0 w-full h-full touch-none" 
+              />
             </div>
             {!imageLoaded && !isGenerating && (
-              <div className="absolute inset-0 z-10 flex flex-col items-center justify-center text-slate-300 pointer-events-none">
-                <ImageIcon size={64} className="mb-4 opacity-50" />
-                <p className="font-black text-xl">Type a prompt to start!</p>
+              <div className="absolute inset-0 z-10 flex flex-col items-center justify-center text-slate-300 pointer-events-none px-4">
+                <ImageIcon size={48} className="sm:w-16 sm:h-16 mb-3 sm:mb-4 opacity-50" />
+                <p className="font-black text-base sm:text-xl text-center">Type a prompt to start!</p>
               </div>
             )}
 
             {/* Corner Undo Button */}
             {imageLoaded && (
-              <div className="absolute top-4 right-4 z-40">
+              <div className="absolute top-2 right-2 sm:top-4 sm:right-4 z-40">
                 <button 
                   onClick={undo} 
                   disabled={history.length <= 1} 
-                  className="bg-white/80 hover:bg-white p-3 rounded-full shadow-lg text-slate-600 hover:text-orange-500 border-2 border-white/50 transition-all active:scale-90 disabled:opacity-0 disabled:pointer-events-none"
+                  className="bg-white/80 hover:bg-white p-2 sm:p-3 rounded-full shadow-lg text-slate-600 hover:text-orange-500 border-2 border-white/50 transition-all active:scale-90 disabled:opacity-0 disabled:pointer-events-none min-w-[44px] min-h-[44px] flex items-center justify-center"
                   title="Undo"
                 >
-                  <RotateCcw size={24} />
+                  <RotateCcw size={20} className="sm:w-6 sm:h-6" />
                 </button>
               </div>
             )}
