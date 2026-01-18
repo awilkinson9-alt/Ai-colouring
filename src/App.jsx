@@ -803,31 +803,31 @@ const App = () => {
   };
 
   return (
-    <div className="min-h-screen bg-amber-50 font-sans text-slate-800 p-2 sm:p-4 md:p-8 flex flex-col items-center">
-      <div className="max-w-4xl w-full text-center mb-3 sm:mb-6">
-        <h1 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-black text-orange-500 flex items-center justify-center gap-2 sm:gap-3 drop-shadow-sm uppercase tracking-tighter">
-          <Palette className="w-6 h-6 sm:w-8 sm:h-8 md:w-10 md:h-10" /> AI Coloring Magic
+    <div className="min-h-screen bg-amber-50 font-sans text-slate-800 p-2 sm:p-4 md:p-8 flex flex-col items-center landscape:py-1">
+      <div className="max-w-4xl w-full text-center mb-3 sm:mb-6 landscape:mb-1 landscape:max-h-[8vh] landscape:flex landscape:items-center landscape:justify-center">
+        <h1 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-black text-orange-500 flex items-center justify-center gap-2 sm:gap-3 drop-shadow-sm uppercase tracking-tighter landscape:text-lg landscape:sm:text-xl">
+          <Palette className="w-6 h-6 sm:w-8 sm:h-8 md:w-10 md:h-10 landscape:w-4 landscape:h-4 landscape:sm:w-5 landscape:sm:h-5" /> AI Coloring Magic
         </h1>
       </div>
 
-      <div className="max-w-7xl w-full grid grid-cols-1 lg:grid-cols-12 gap-3 sm:gap-4 md:gap-6 items-start">
-        <div className="lg:col-span-4 space-y-3 sm:space-y-4 order-2 lg:order-1">
-          <div className="bg-white p-3 sm:p-4 md:p-5 rounded-2xl sm:rounded-3xl shadow-lg border-2 sm:border-4 border-white">
+      <div className="max-w-7xl w-full grid grid-cols-1 lg:grid-cols-12 gap-3 sm:gap-4 md:gap-6 items-start landscape:grid-cols-12 landscape:gap-2 landscape:max-h-[90vh]">
+        <div className="lg:col-span-4 space-y-3 sm:space-y-4 order-2 lg:order-1 landscape:col-span-3 landscape:space-y-2 landscape:overflow-y-auto landscape:max-h-[90vh]">
+          <div className="bg-white p-3 sm:p-4 md:p-5 rounded-2xl sm:rounded-3xl shadow-lg border-2 sm:border-4 border-white landscape:p-2">
             <div className="flex gap-2">
               <input 
                 type="text" 
                 value={prompt} 
                 onChange={(e) => setPrompt(e.target.value)} 
                 placeholder="A happy dragon..." 
-                className="flex-1 bg-slate-100 border-none rounded-xl sm:rounded-2xl px-3 sm:px-4 py-2 sm:py-3 text-sm sm:text-base outline-none transition-all font-medium" 
+                className="flex-1 bg-slate-100 border-none rounded-xl sm:rounded-2xl px-3 sm:px-4 py-2 sm:py-3 text-sm sm:text-base outline-none transition-all font-medium landscape:py-1.5 landscape:text-xs" 
                 onKeyDown={(e) => e.key === 'Enter' && generateImage()}
               />
               <button 
                 onClick={generateImage} 
                 disabled={isGenerating || !prompt.trim()} 
-                className="p-2 sm:p-3 bg-orange-500 hover:bg-orange-600 disabled:bg-slate-200 text-white rounded-xl sm:rounded-2xl shadow-md active:scale-95 transition-transform min-w-[44px] min-h-[44px] flex items-center justify-center"
+                className="p-2 sm:p-3 bg-orange-500 hover:bg-orange-600 disabled:bg-slate-200 text-white rounded-xl sm:rounded-2xl shadow-md active:scale-95 transition-transform min-w-[44px] min-h-[44px] flex items-center justify-center landscape:min-w-[36px] landscape:min-h-[36px] landscape:p-1.5"
               >
-                {isGenerating ? <Loader2 className="animate-spin w-5 h-5 sm:w-6 sm:h-6" /> : <Search className="w-5 h-5 sm:w-6 sm:h-6" />}
+                {isGenerating ? <Loader2 className="animate-spin w-5 h-5 sm:w-6 sm:h-6 landscape:w-4 landscape:h-4" /> : <Search className="w-5 h-5 sm:w-6 sm:h-6 landscape:w-4 landscape:h-4" />}
               </button>
             </div>
             {isCached && (
@@ -837,7 +837,7 @@ const App = () => {
             )}
           </div>
 
-          <div className="bg-white p-3 sm:p-4 md:p-5 rounded-2xl sm:rounded-3xl shadow-lg border-2 sm:border-4 border-white">
+          <div className="bg-white p-3 sm:p-4 md:p-5 rounded-2xl sm:rounded-3xl shadow-lg border-2 sm:border-4 border-white landscape:p-2 landscape:hidden">
             <h2 className="text-xs font-bold text-slate-400 mb-2 sm:mb-3 uppercase tracking-widest flex items-center gap-2"><ZoomIn size={12} className="sm:w-3.5 sm:h-3.5"/> Zoom Tool</h2>
             <div className="flex items-center gap-2 sm:gap-4">
               <input 
@@ -858,32 +858,32 @@ const App = () => {
             </div>
           </div>
 
-          <div className="bg-white p-3 sm:p-4 md:p-5 rounded-2xl sm:rounded-3xl shadow-lg border-2 sm:border-4 border-white">
-            <div className="grid grid-cols-3 gap-2 mb-3 sm:mb-4">
+          <div className="bg-white p-3 sm:p-4 md:p-5 rounded-2xl sm:rounded-3xl shadow-lg border-2 sm:border-4 border-white landscape:p-2">
+            <div className="grid grid-cols-3 gap-2 mb-3 sm:mb-4 landscape:gap-1 landscape:mb-2">
               <button 
                 onClick={() => setTool('brush')} 
-                className={`flex flex-col items-center justify-center gap-1 p-2 sm:p-3 rounded-xl sm:rounded-2xl font-bold border-b-2 sm:border-b-4 transition-all min-h-[60px] sm:min-h-[80px] ${tool === 'brush' ? 'bg-orange-500 text-white border-orange-700 -translate-y-1' : 'bg-slate-100 text-slate-500 border-slate-200 hover:bg-slate-200'}`}
+                className={`flex flex-col items-center justify-center gap-1 p-2 sm:p-3 rounded-xl sm:rounded-2xl font-bold border-b-2 sm:border-b-4 transition-all min-h-[60px] sm:min-h-[80px] landscape:min-h-[50px] landscape:p-1.5 ${tool === 'brush' ? 'bg-orange-500 text-white border-orange-700 -translate-y-1' : 'bg-slate-100 text-slate-500 border-slate-200 hover:bg-slate-200'}`}
               >
-                <Brush size={18} className="sm:w-5 sm:h-5"/> 
-                <span className="text-[10px] sm:text-xs">Brush</span>
+                <Brush size={18} className="sm:w-5 sm:h-5 landscape:w-4 landscape:h-4"/> 
+                <span className="text-[10px] sm:text-xs landscape:text-[9px]">Brush</span>
               </button>
               <button 
                 onClick={() => setTool('bucket')} 
-                className={`flex flex-col items-center justify-center gap-1 p-2 sm:p-3 rounded-xl sm:rounded-2xl font-bold border-b-2 sm:border-b-4 transition-all min-h-[60px] sm:min-h-[80px] ${tool === 'bucket' ? 'bg-blue-500 text-white border-blue-700 -translate-y-1' : 'bg-slate-100 text-slate-500 border-slate-200 hover:bg-slate-200'}`}
+                className={`flex flex-col items-center justify-center gap-1 p-2 sm:p-3 rounded-xl sm:rounded-2xl font-bold border-b-2 sm:border-b-4 transition-all min-h-[60px] sm:min-h-[80px] landscape:min-h-[50px] landscape:p-1.5 ${tool === 'bucket' ? 'bg-blue-500 text-white border-blue-700 -translate-y-1' : 'bg-slate-100 text-slate-500 border-slate-200 hover:bg-slate-200'}`}
               >
-                <PaintBucket size={18} className="sm:w-5 sm:h-5"/> 
-                <span className="text-[10px] sm:text-xs">Fill</span>
+                <PaintBucket size={18} className="sm:w-5 sm:h-5 landscape:w-4 landscape:h-4"/> 
+                <span className="text-[10px] sm:text-xs landscape:text-[9px]">Fill</span>
               </button>
               <button 
                 onClick={() => setTool('hand')} 
-                className={`flex flex-col items-center justify-center gap-1 p-2 sm:p-3 rounded-xl sm:rounded-2xl font-bold border-b-2 sm:border-b-4 transition-all min-h-[60px] sm:min-h-[80px] ${tool === 'hand' ? 'bg-purple-500 text-white border-purple-700 -translate-y-1' : 'bg-slate-100 text-slate-500 border-slate-200 hover:bg-slate-200'}`}
+                className={`flex flex-col items-center justify-center gap-1 p-2 sm:p-3 rounded-xl sm:rounded-2xl font-bold border-b-2 sm:border-b-4 transition-all min-h-[60px] sm:min-h-[80px] landscape:min-h-[50px] landscape:p-1.5 ${tool === 'hand' ? 'bg-purple-500 text-white border-purple-700 -translate-y-1' : 'bg-slate-100 text-slate-500 border-slate-200 hover:bg-slate-200'}`}
               >
-                <Move size={18} className="sm:w-5 sm:h-5"/> 
-                <span className="text-[10px] sm:text-xs">Move</span>
+                <Move size={18} className="sm:w-5 sm:h-5 landscape:w-4 landscape:h-4"/> 
+                <span className="text-[10px] sm:text-xs landscape:text-[9px]">Move</span>
               </button>
             </div>
             {tool === 'brush' && (
-              <div className="mt-3 sm:mt-4 pt-3 sm:pt-4 border-t border-slate-200">
+              <div className="mt-3 sm:mt-4 pt-3 sm:pt-4 border-t border-slate-200 landscape:mt-2 landscape:pt-2 landscape:hidden">
                 <label className="text-xs font-bold text-slate-400 mb-2 block uppercase tracking-widest">Brush Size</label>
                 <input 
                   type="range" 
@@ -899,39 +899,39 @@ const App = () => {
             )}
           </div>
 
-          <div className="bg-white p-3 sm:p-4 md:p-5 rounded-2xl sm:rounded-3xl shadow-lg border-2 sm:border-4 border-white grid grid-cols-6 sm:grid-cols-6 gap-1.5 sm:gap-2">
+          <div className="bg-white p-3 sm:p-4 md:p-5 rounded-2xl sm:rounded-3xl shadow-lg border-2 sm:border-4 border-white grid grid-cols-6 sm:grid-cols-6 gap-1.5 sm:gap-2 landscape:p-2 landscape:gap-1">
             {COLORS.map((color) => (
               <button 
                 key={color} 
                 onClick={() => setSelectedColor(color)} 
-                className={`w-full aspect-square rounded-full border-2 sm:border-4 transition-all min-h-[36px] sm:min-h-[44px] ${selectedColor === color ? 'border-slate-800 scale-110 shadow-md rotate-6' : 'border-transparent hover:scale-110'}`} 
+                className={`w-full aspect-square rounded-full border-2 sm:border-4 transition-all min-h-[36px] sm:min-h-[44px] landscape:min-h-[28px] ${selectedColor === color ? 'border-slate-800 scale-110 shadow-md rotate-6' : 'border-transparent hover:scale-110'}`} 
                 style={{ backgroundColor: color }} 
               />
             ))}
           </div>
 
           {/* Sidebar Actions */}
-          <div className="bg-white p-3 sm:p-4 rounded-2xl sm:rounded-3xl shadow-lg border-2 sm:border-4 border-white flex gap-2">
+          <div className="bg-white p-3 sm:p-4 rounded-2xl sm:rounded-3xl shadow-lg border-2 sm:border-4 border-white flex gap-2 landscape:p-2 landscape:gap-1">
              <button 
                 onClick={handleSave} 
                 disabled={!imageLoaded} 
-                className="flex-1 bg-green-500 hover:bg-green-600 p-3 sm:p-4 rounded-xl sm:rounded-2xl shadow-md font-bold text-white border-b-2 sm:border-b-4 border-green-700 active:translate-y-1 active:border-b-0 transition-all flex items-center justify-center gap-2 disabled:opacity-50 text-sm sm:text-base min-h-[44px]"
+                className="flex-1 bg-green-500 hover:bg-green-600 p-3 sm:p-4 rounded-xl sm:rounded-2xl shadow-md font-bold text-white border-b-2 sm:border-b-4 border-green-700 active:translate-y-1 active:border-b-0 transition-all flex items-center justify-center gap-2 disabled:opacity-50 text-sm sm:text-base min-h-[44px] landscape:min-h-[36px] landscape:p-2 landscape:text-xs"
               >
-                <Download size={18} className="sm:w-5 sm:h-5" /> <span className="hidden sm:inline">Save</span>
+                <Download size={18} className="sm:w-5 sm:h-5 landscape:w-4 landscape:h-4" /> <span className="hidden sm:inline landscape:hidden">Save</span>
               </button>
               <button 
                 onClick={handlePrint} 
                 disabled={!imageLoaded} 
-                className="flex-1 bg-blue-500 hover:bg-blue-600 p-3 sm:p-4 rounded-xl sm:rounded-2xl shadow-md font-bold text-white border-b-2 sm:border-b-4 border-blue-700 active:translate-y-1 active:border-b-0 transition-all flex items-center justify-center gap-2 disabled:opacity-50 text-sm sm:text-base min-h-[44px]"
+                className="flex-1 bg-blue-500 hover:bg-blue-600 p-3 sm:p-4 rounded-xl sm:rounded-2xl shadow-md font-bold text-white border-b-2 sm:border-b-4 border-blue-700 active:translate-y-1 active:border-b-0 transition-all flex items-center justify-center gap-2 disabled:opacity-50 text-sm sm:text-base min-h-[44px] landscape:min-h-[36px] landscape:p-2 landscape:text-xs"
               >
-                <Printer size={18} className="sm:w-5 sm:h-5" /> <span className="hidden sm:inline">Print</span>
+                <Printer size={18} className="sm:w-5 sm:h-5 landscape:w-4 landscape:h-4" /> <span className="hidden sm:inline landscape:hidden">Print</span>
               </button>
           </div>
         </div>
 
-        <div className="lg:col-span-8 space-y-3 sm:space-y-4 order-1 lg:order-2">
+        <div className="lg:col-span-8 space-y-3 sm:space-y-4 order-1 lg:order-2 landscape:col-span-9 landscape:space-y-2">
           {/* Progress Bar */}
-          <div className="bg-white p-3 sm:p-4 rounded-2xl sm:rounded-3xl shadow-xl border-2 sm:border-4 border-white">
+          <div className="bg-white p-3 sm:p-4 rounded-2xl sm:rounded-3xl shadow-xl border-2 sm:border-4 border-white landscape:p-2 landscape:hidden">
             <div className="flex items-center justify-between mb-2 px-1 sm:px-2">
               <span className="text-xs sm:text-sm font-black text-slate-500 uppercase tracking-widest">Masterpiece Meter</span>
               <span className="text-lg sm:text-xl font-bold flex items-center gap-1">
@@ -954,7 +954,7 @@ const App = () => {
             </div>
           )}
 
-          <div ref={containerRef} className="relative bg-white p-1 sm:p-2 rounded-2xl sm:rounded-[40px] shadow-2xl border-4 sm:border-8 border-white ring-2 sm:ring-4 ring-orange-100 w-full max-w-[600px] aspect-square overflow-hidden cursor-crosshair">
+          <div ref={containerRef} className="relative bg-white p-1 sm:p-2 rounded-2xl sm:rounded-[40px] shadow-2xl border-4 sm:border-8 border-white ring-2 sm:ring-4 ring-orange-100 w-full max-w-[600px] aspect-square overflow-hidden cursor-crosshair landscape:max-h-[70vh]">
             {isGenerating && (
               <div className="absolute inset-0 z-30 bg-white/90 backdrop-blur-sm flex flex-col items-center justify-center px-4">
                 <Loader2 className="w-10 h-10 sm:w-12 sm:h-12 text-orange-500 animate-spin mb-3 sm:mb-4" />

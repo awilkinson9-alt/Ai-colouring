@@ -7,5 +7,10 @@ export default {
   theme: {
     extend: {},
   },
-  plugins: [],
+  plugins: [
+    function({ addVariant }) {
+      // Landscape variant for small devices only (max-width: 1023px)
+      addVariant('landscape', '@media (orientation: landscape) and (max-width: 1023px)')
+    }
+  ],
 }
