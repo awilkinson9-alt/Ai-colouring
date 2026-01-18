@@ -45,30 +45,54 @@ const App = () => {
   
   const isInteractingRef = useRef(false);
   const lastPointRef = useRef({ x: 0, y: 0 });
-  const apiKey = import.meta.env.VITE_GOOGLE_API_KEY || ""; 
+  const lastRequestTime = useRef(0);
+  const [isCached, setIsCached] = useState(false); 
 
   useEffect(() => {
     const updateCanvasSize = () => {
       if (containerRef.current && drawCanvasRef.current && linesCanvasRef.current) {
-        const internalSize = 800; 
+        // Use 1024 if image is loaded (matches original image size), otherwise 800
+        const internalSize = imageLoaded ? 1024 : 800; 
         
         [drawCanvasRef.current, linesCanvasRef.current].forEach(canvas => {
-          if (canvas.width === internalSize) return;
+          // Skip resize if canvas is already correct size - prevents blur from re-scaling processed images
+          if (canvas.width === internalSize && canvas.height === internalSize) {
+            // Just ensure smoothing is disabled
+            const ctx = canvas.getContext('2d');
+            ctx.imageSmoothingEnabled = false;
+            return;
+          }
 
           const temp = document.createElement('canvas');
           temp.width = canvas.width;
           temp.height = canvas.height;
-          if (canvas.width > 0) temp.getContext('2d').drawImage(canvas, 0, 0);
+          if (canvas.width > 0 && canvas.height > 0) {
+            const tempCtx = temp.getContext('2d');
+            tempCtx.imageSmoothingEnabled = false;
+            tempCtx.drawImage(canvas, 0, 0);
+          }
           
           canvas.width = internalSize;
           canvas.height = internalSize;
           
           const ctx = canvas.getContext('2d');
+          // #region agent log
+          fetch('http://127.0.0.1:7244/ingest/65d6f4cb-b1f9-40ab-b782-b00f922cdb85',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:67',message:'Canvas resize effect',data:{canvasName:canvas===drawCanvasRef.current?'draw':'lines',imageLoaded,oldWidth:temp.width,newWidth:internalSize},timestamp:Date.now(),sessionId:'debug-session',runId:'error-debug',hypothesisId:'F'})}).catch(()=>{});
+          // #endregion
+          // CRITICAL: Keep smoothing DISABLED for sharp lines (only enable for zoom if needed)
+          // For coloring book style, we want crisp lines, not smooth/blurry ones
+          ctx.imageSmoothingEnabled = false;
+          // #region agent log
+          fetch('http://127.0.0.1:7244/ingest/65d6f4cb-b1f9-40ab-b782-b00f922cdb85',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:72',message:'After setting smoothing in resize',data:{smoothingEnabled:ctx.imageSmoothingEnabled},timestamp:Date.now(),sessionId:'debug-session',runId:'error-debug',hypothesisId:'F'})}).catch(()=>{});
+          // #endregion
           if (canvas === drawCanvasRef.current && !imageLoaded) {
             ctx.fillStyle = 'white';
             ctx.fillRect(0, 0, internalSize, internalSize);
           }
-          if (temp.width > 0) ctx.drawImage(temp, 0, 0, internalSize, internalSize);
+          // Only re-draw if there was existing content (avoid scaling empty canvas)
+          if (temp.width > 0 && temp.height > 0) {
+            ctx.drawImage(temp, 0, 0, internalSize, internalSize);
+          }
         });
       }
     };
@@ -78,75 +102,311 @@ const App = () => {
     return () => window.removeEventListener('resize', updateCanvasSize);
   }, [imageLoaded]);
 
+  // Simple hash function for caching
+  const hashPrompt = (text) => {
+    let hash = 0;
+    for (let i = 0; i < text.length; i++) {
+      const char = text.charCodeAt(i);
+      hash = ((hash << 5) - hash) + char;
+      hash = hash & hash; // Convert to 32bit integer
+    }
+    return hash.toString();
+  };
+
+  // Check cache before generating
+  const getCachedImage = (promptKey) => {
+    try {
+      const cached = localStorage.getItem(`coloring_cache_${promptKey}`);
+      if (cached) {
+        const { image, timestamp } = JSON.parse(cached);
+        // Cache valid for 30 days
+        if (Date.now() - timestamp < 30 * 24 * 60 * 60 * 1000) {
+          return image;
+        }
+      }
+    } catch (e) {
+      console.warn('Cache read error:', e);
+    }
+    return null;
+  };
+
+  // Save to cache
+  const saveToCache = (promptKey, imageData) => {
+    try {
+      localStorage.setItem(`coloring_cache_${promptKey}`, JSON.stringify({
+        image: imageData,
+        timestamp: Date.now()
+      }));
+      // Limit cache size to ~50 images (roughly 10MB)
+      const keys = Object.keys(localStorage).filter(k => k.startsWith('coloring_cache_'));
+      if (keys.length > 50) {
+        // Remove oldest entries
+        const sorted = keys.map(k => ({
+          key: k,
+          timestamp: JSON.parse(localStorage.getItem(k)).timestamp
+        })).sort((a, b) => a.timestamp - b.timestamp);
+        sorted.slice(0, keys.length - 50).forEach(({ key }) => localStorage.removeItem(key));
+      }
+    } catch (e) {
+      console.warn('Cache write error (storage full?):', e);
+    }
+  };
+
   const generateImage = async () => {
     if (!prompt.trim()) return;
+    
+    // #region agent log
+    fetch('http://127.0.0.1:7244/ingest/65d6f4cb-b1f9-40ab-b782-b00f922cdb85',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:142',message:'generateImage called',data:{prompt:prompt.trim()},timestamp:Date.now(),sessionId:'debug-session',runId:'error-debug',hypothesisId:'F'})}).catch(()=>{});
+    // #endregion
+    
+    // Rate limiting: 5 second cooldown between requests
+    const now = Date.now();
+    const timeSinceLastRequest = now - lastRequestTime.current;
+    if (timeSinceLastRequest < 5000) {
+      setError(`Please wait ${Math.ceil((5000 - timeSinceLastRequest) / 1000)} more seconds before generating again.`);
+      return;
+    }
+
     setIsGenerating(true);
     setError(null);
     setImageLoaded(false);
     setProgress(0);
     setZoom(1);
     setPan({ x: 0, y: 0 });
+    setIsCached(false);
 
-    const fullPrompt = `simple black and white coloring book illustration for kids, thick bold black outlines, pure white background, no shading, no gradients, clean vector style, high contrast, outline only, no filled areas: ${prompt}`;
+    const normalizedPrompt = prompt.trim().toLowerCase();
+    const promptKey = hashPrompt(normalizedPrompt);
+    
+    // Check cache first
+    const cachedImage = getCachedImage(promptKey);
+    if (cachedImage) {
+      // #region agent log
+      fetch('http://127.0.0.1:7244/ingest/65d6f4cb-b1f9-40ab-b782-b00f922cdb85',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:168',message:'Using cached image',data:{promptKey},timestamp:Date.now(),sessionId:'debug-session',runId:'error-debug',hypothesisId:'F'})}).catch(()=>{});
+      // #endregion
+      setIsCached(true);
+      processImage(cachedImage);
+      setIsGenerating(false);
+      return;
+    }
 
+    // Call backend proxy (handles Replicate API with API key securely)
     try {
-      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/imagen-4.0-generate-001:predict?key=${apiKey}`, {
+      lastRequestTime.current = now;
+      // #region agent log
+      fetch('http://127.0.0.1:7244/ingest/65d6f4cb-b1f9-40ab-b782-b00f922cdb85',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:177',message:'Fetching from API',data:{url:'http://localhost:3001/api/generate',prompt},timestamp:Date.now(),sessionId:'debug-session',runId:'error-debug',hypothesisId:'F'})}).catch(()=>{});
+      // #endregion
+      
+      const response = await fetch('http://localhost:3001/api/generate', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          instances: [{ prompt: fullPrompt }],
-          parameters: { sampleCount: 1 }
-        })
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ prompt }),
       });
 
-      if (!response.ok) throw new Error('Failed to generate');
+      // #region agent log
+      fetch('http://127.0.0.1:7244/ingest/65d6f4cb-b1f9-40ab-b782-b00f922cdb85',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:188',message:'API response received',data:{ok:response.ok,status:response.status,statusText:response.statusText},timestamp:Date.now(),sessionId:'debug-session',runId:'error-debug',hypothesisId:'F'})}).catch(()=>{});
+      // #endregion
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        // #region agent log
+        fetch('http://127.0.0.1:7244/ingest/65d6f4cb-b1f9-40ab-b782-b00f922cdb85',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:192',message:'API error response',data:{status:response.status,error:errorData.error||errorData.message||'Unknown error'},timestamp:Date.now(),sessionId:'debug-session',runId:'error-debug',hypothesisId:'F'})}).catch(()=>{});
+        // #endregion
+        throw new Error(errorData.error || `Failed to generate: ${response.status}`);
+      }
+
       const result = await response.json();
-      const base64Image = `data:image/png;base64,${result.predictions[0].bytesBase64Encoded}`;
+      const base64Image = result.image;
+      
+      // #region agent log
+      fetch('http://127.0.0.1:7244/ingest/65d6f4cb-b1f9-40ab-b782-b00f922cdb85',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:197',message:'API success',data:{hasImage:!!base64Image,imageLength:base64Image?.length||0},timestamp:Date.now(),sessionId:'debug-session',runId:'error-debug',hypothesisId:'F'})}).catch(()=>{});
+      // #endregion
+      
+      if (!base64Image) {
+        // #region agent log
+        fetch('http://127.0.0.1:7244/ingest/65d6f4cb-b1f9-40ab-b782-b00f922cdb85',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:200',message:'No image in response',data:{resultKeys:Object.keys(result)},timestamp:Date.now(),sessionId:'debug-session',runId:'error-debug',hypothesisId:'F'})}).catch(()=>{});
+        // #endregion
+        throw new Error('No image returned from server');
+      }
+      
+      // Save to cache and process
+      saveToCache(promptKey, base64Image);
       processImage(base64Image);
+
     } catch (err) {
-      setError("AI is busy! Try again in a second.");
+      console.error('Generation error:', err);
+      // #region agent log
+      fetch('http://127.0.0.1:7244/ingest/65d6f4cb-b1f9-40ab-b782-b00f922cdb85',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:207',message:'Generation catch block',data:{errorMessage:err.message,errorName:err.name,errorStack:err.stack?.substring(0,200)},timestamp:Date.now(),sessionId:'debug-session',runId:'error-debug',hypothesisId:'F'})}).catch(()=>{});
+      // #endregion
+      setError(err.message || "AI is busy! Try again in a second.");
       setIsGenerating(false);
     }
   };
 
   const processImage = (src) => {
+    // #region agent log
+    fetch('http://127.0.0.1:7244/ingest/65d6f4cb-b1f9-40ab-b782-b00f922cdb85',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:208',message:'processImage called',data:{srcLength:src?.length||0,srcType:typeof src},timestamp:Date.now(),sessionId:'debug-session',runId:'error-debug',hypothesisId:'F'})}).catch(()=>{});
+    // #endregion
     const img = new Image();
     img.crossOrigin = "anonymous";
+    img.onerror = (err) => {
+      // #region agent log
+      fetch('http://127.0.0.1:7244/ingest/65d6f4cb-b1f9-40ab-b782-b00f922cdb85',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:212',message:'Image load error',data:{error:err.toString()},timestamp:Date.now(),sessionId:'debug-session',runId:'error-debug',hypothesisId:'F'})}).catch(()=>{});
+      // #endregion
+      console.error('Image load error:', err);
+      setError('Failed to load image');
+      setIsGenerating(false);
+    };
     img.onload = () => {
-      const size = 800;
+      // #region agent log
+      fetch('http://127.0.0.1:7244/ingest/65d6f4cb-b1f9-40ab-b782-b00f922cdb85',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:201',message:'processImage started',data:{imgWidth:img.width,imgHeight:img.height,srcLength:src.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
+      // #endregion
+      // Use original image resolution - no scaling = maximum sharpness
+      // Gemini Canvas likely keeps images at original resolution
+      const size = Math.min(img.width, img.height); // Use 1024 if image is 1024x1024
+      // #region agent log
+      fetch('http://127.0.0.1:7244/ingest/65d6f4cb-b1f9-40ab-b782-b00f922cdb85',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:215',message:'Canvas size decision',data:{size,imgWidth:img.width,imgHeight:img.height},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix7',hypothesisId:'D'})}).catch(()=>{});
+      // #endregion
+      // Set canvas size BEFORE processing to avoid resize blur
+      if (drawCanvasRef.current.width !== size || drawCanvasRef.current.height !== size) {
+        drawCanvasRef.current.width = size;
+        drawCanvasRef.current.height = size;
+      }
+      if (linesCanvasRef.current.width !== size || linesCanvasRef.current.height !== size) {
+        linesCanvasRef.current.width = size;
+        linesCanvasRef.current.height = size;
+      }
+      
       const dCtx = drawCanvasRef.current.getContext('2d');
       const lCtx = linesCanvasRef.current.getContext('2d');
 
+      // #region agent log
+      fetch('http://127.0.0.1:7244/ingest/65d6f4cb-b1f9-40ab-b782-b00f922cdb85',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:260',message:'Before setting smoothing',data:{dCtxSmoothing:dCtx.imageSmoothingEnabled,lCtxSmoothing:lCtx.imageSmoothingEnabled,canvasWidth:dCtx.canvas.width,canvasHeight:dCtx.canvas.height,size},timestamp:Date.now(),sessionId:'debug-session',runId:'error-debug',hypothesisId:'F'})}).catch(()=>{});
+      // #endregion
+      // Disable ALL smoothing for maximum sharpness
+      dCtx.imageSmoothingEnabled = false;
+      lCtx.imageSmoothingEnabled = false;
+      // #region agent log
+      fetch('http://127.0.0.1:7244/ingest/65d6f4cb-b1f9-40ab-b782-b00f922cdb85',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:268',message:'After setting smoothing',data:{dCtxSmoothing:dCtx.imageSmoothingEnabled,lCtxSmoothing:lCtx.imageSmoothingEnabled},timestamp:Date.now(),sessionId:'debug-session',runId:'error-debug',hypothesisId:'F'})}).catch(()=>{});
+      // #endregion
+      
       dCtx.fillStyle = 'white';
       dCtx.fillRect(0, 0, size, size);
       lCtx.clearRect(0, 0, size, size);
 
+      // Process at original resolution - no scaling = maximum sharpness
+      // Gemini Canvas keeps images at original resolution for sharpness
       const temp = document.createElement('canvas');
       temp.width = size;
       temp.height = size;
       const tCtx = temp.getContext('2d');
+      tCtx.imageSmoothingEnabled = false;
+      // #region agent log
+      fetch('http://127.0.0.1:7244/ingest/65d6f4cb-b1f9-40ab-b782-b00f922cdb85',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:238',message:'Before drawImage at original size',data:{tCtxSmoothing:tCtx.imageSmoothingEnabled,size,imgWidth:img.width,imgHeight:img.height},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix7',hypothesisId:'D'})}).catch(()=>{});
+      // #endregion
+      
+      // Draw at original size - no scaling preserves sharpness
       const scale = Math.min(size / img.width, size / img.height);
       const x = (size / 2) - (img.width / 2) * scale;
       const y = (size / 2) - (img.height / 2) * scale;
       tCtx.drawImage(img, x, y, img.width * scale, img.height * scale);
-
+      
+      // Process at original resolution with aggressive threshold + morphological operations
       const imgData = tCtx.getImageData(0, 0, size, size);
       const lineData = lCtx.createImageData(size, size);
-      const backgroundDetection = new Uint8Array(size * size); 
       
+      // Step 1: Binary threshold
+      const tempLineData = new Uint8Array(size * size);
       for (let i = 0; i < imgData.data.length; i += 4) {
-        const brightness = (imgData.data[i] + imgData.data[i + 1] + imgData.data[i + 2]) / 3;
+        const r = imgData.data[i];
+        const g = imgData.data[i + 1];
+        const b = imgData.data[i + 2];
+        const brightness = (r + g + b) / 3;
         const idx = i / 4;
-        if (brightness < 200) { 
-          lineData.data[i] = 0; lineData.data[i + 1] = 0; lineData.data[i + 2] = 0; 
-          lineData.data[i + 3] = 255 - brightness; 
-          backgroundDetection[idx] = 2; 
-        } else {
-          lineData.data[i + 3] = 0; 
-          backgroundDetection[idx] = 0; 
+        
+        // Aggressive threshold - catch everything that's not pure white
+        tempLineData[idx] = brightness < 240 ? 1 : 0;
+      }
+      
+      // Step 2: Morphological closing (dilation then erosion) to connect broken lines and smooth edges
+      const dilated = new Uint8Array(size * size);
+      const getPixel = (arr, x, y) => {
+        if (x < 0 || x >= size || y < 0 || y >= size) return 0;
+        return arr[y * size + x];
+      };
+      
+      // Dilation: expand lines slightly (connect nearby pixels)
+      for (let y = 0; y < size; y++) {
+        for (let x = 0; x < size; x++) {
+          const idx = y * size + x;
+          dilated[idx] = tempLineData[idx] || 
+            getPixel(tempLineData, x-1, y) || getPixel(tempLineData, x+1, y) || 
+            getPixel(tempLineData, x, y-1) || getPixel(tempLineData, x, y+1);
         }
       }
-      lCtx.putImageData(lineData, 0, 0);
+      
+      // Erosion: shrink back slightly but keep connected lines
+      // Less aggressive - just smooth edges, don't remove thin lines
+      const closed = new Uint8Array(size * size);
+      for (let y = 0; y < size; y++) {
+        for (let x = 0; x < size; x++) {
+          const idx = y * size + x;
+          // Keep pixel if it has at least 2 neighbors (preserves thin lines)
+          const neighbors = [
+            getPixel(dilated, x-1, y), getPixel(dilated, x+1, y),
+            getPixel(dilated, x, y-1), getPixel(dilated, x, y+1)
+          ].filter(n => n === 1).length;
+          closed[idx] = dilated[idx] && (neighbors >= 2 || dilated[idx]) ? 1 : 0;
+        }
+      }
+      
+      // Step 3: Convert to ImageData - pure black lines on pure white
+      const backgroundDetection = new Uint8Array(size * size);
+      for (let i = 0; i < imgData.data.length; i += 4) {
+        const idx = i / 4;
+        const isLine = closed[idx] === 1;
+        
+        if (isLine) {
+          lineData.data[i] = 0;
+          lineData.data[i + 1] = 0;
+          lineData.data[i + 2] = 0;
+          lineData.data[i + 3] = 255;
+          imgData.data[i] = 0;
+          imgData.data[i + 1] = 0;
+          imgData.data[i + 2] = 0;
+          backgroundDetection[idx] = 2;
+        } else {
+          lineData.data[i + 3] = 0;
+          imgData.data[i] = 255;
+          imgData.data[i + 1] = 255;
+          imgData.data[i + 2] = 255;
+          backgroundDetection[idx] = 0;
+        }
+        imgData.data[i + 3] = 255;
+      }
+      
+      // Update canvases with processed data
+      try {
+        tCtx.putImageData(imgData, 0, 0);
+        lCtx.putImageData(lineData, 0, 0);
+        
+        // Copy to draw canvas
+        dCtx.drawImage(temp, 0, 0);
+        
+        // #region agent log
+        fetch('http://127.0.0.1:7244/ingest/65d6f4cb-b1f9-40ab-b782-b00f922cdb85',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:335',message:'After processing at original size',data:{finalSize:size,canvasWidth:dCtx.canvas.width,canvasHeight:dCtx.canvas.height},timestamp:Date.now(),sessionId:'debug-session',runId:'error-debug',hypothesisId:'F'})}).catch(()=>{});
+        // #endregion
+      } catch (canvasError) {
+        // #region agent log
+        fetch('http://127.0.0.1:7244/ingest/65d6f4cb-b1f9-40ab-b782-b00f922cdb85',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:340',message:'Canvas update error',data:{error:canvasError.message,errorName:canvasError.name},timestamp:Date.now(),sessionId:'debug-session',runId:'error-debug',hypothesisId:'F'})}).catch(()=>{});
+        // #endregion
+        console.error('Canvas update error:', canvasError);
+        setError('Failed to process image');
+        setIsGenerating(false);
+        return;
+      }
 
       const queue = [];
       const visited = new Uint8Array(size * size);
@@ -227,7 +487,9 @@ const App = () => {
 
   const saveToHistory = () => {
     const ctx = drawCanvasRef.current.getContext('2d');
-    setHistory(prev => [...prev.slice(-19), ctx.getImageData(0, 0, 800, 800)]);
+    const width = ctx.canvas.width;
+    const height = ctx.canvas.height;
+    setHistory(prev => [...prev.slice(-19), ctx.getImageData(0, 0, width, height)]);
     calculateProgress();
   };
 
@@ -235,10 +497,12 @@ const App = () => {
     const rect = linesCanvasRef.current.getBoundingClientRect();
     const visualX = e.clientX - rect.left;
     const visualY = e.clientY - rect.top;
-    let x = (visualX / rect.width) * 800;
-    let y = (visualY / rect.height) * 800;
-    x = Math.max(0, Math.min(799, x));
-    y = Math.max(0, Math.min(799, y));
+    const canvasWidth = linesCanvasRef.current.width;
+    const canvasHeight = linesCanvasRef.current.height;
+    let x = (visualX / rect.width) * canvasWidth;
+    let y = (visualY / rect.height) * canvasHeight;
+    x = Math.max(0, Math.min(canvasWidth - 1, x));
+    y = Math.max(0, Math.min(canvasHeight - 1, y));
     return { x, y };
   };
 
@@ -248,8 +512,15 @@ const App = () => {
     isInteractingRef.current = true;
     lastPointRef.current = { ...coords, rawX: e.clientX, rawY: e.clientY };
 
+    // Save state before any operation for proper undo
+    if (tool === 'bucket' || tool === 'brush') {
+      saveToHistory();
+    }
+
     if (tool === 'bucket') {
       performFloodFill(Math.floor(coords.x), Math.floor(coords.y));
+      // Save after fill completes
+      saveToHistory();
     } else if (tool === 'brush') {
       draw(coords.x, coords.y);
     }
@@ -277,22 +548,76 @@ const App = () => {
 
   const draw = (x, y) => {
     const ctx = drawCanvasRef.current.getContext('2d');
-    ctx.globalCompositeOperation = 'source-over';
-    ctx.lineJoin = 'round'; ctx.lineCap = 'round';
-    ctx.strokeStyle = selectedColor;
-    ctx.lineWidth = brushSize;
-    ctx.beginPath();
-    ctx.moveTo(lastPointRef.current.x, lastPointRef.current.y);
-    ctx.lineTo(x, y);
-    ctx.stroke();
+    // CRITICAL: Disable ALL smoothing for pixel-perfect sharp brush strokes
+    ctx.imageSmoothingEnabled = false;
+    
+    const width = ctx.canvas.width;
+    const height = ctx.canvas.height;
+    const radius = Math.floor(brushSize / 2);
+    const lastX = Math.floor(lastPointRef.current.x);
+    const lastY = Math.floor(lastPointRef.current.y);
+    const currX = Math.floor(x);
+    const currY = Math.floor(y);
+    
+    // Get current image data
+    const imageData = ctx.getImageData(0, 0, width, height);
+    const data = imageData.data;
+    const fillColor = hexToRgb(selectedColor);
+    if (!fillColor) return;
+    
+    // Draw filled circle using direct pixel manipulation for pixel-perfect sharpness
+    const drawCircle = (cx, cy, r) => {
+      const r2 = r * r;
+      for (let dy = -r; dy <= r; dy++) {
+        for (let dx = -r; dx <= r; dx++) {
+          if (dx * dx + dy * dy <= r2) {
+            const px = cx + dx;
+            const py = cy + dy;
+            if (px >= 0 && px < width && py >= 0 && py < height) {
+              const idx = (py * width + px) * 4;
+              data[idx] = fillColor.r;
+              data[idx + 1] = fillColor.g;
+              data[idx + 2] = fillColor.b;
+              data[idx + 3] = 255;
+            }
+          }
+        }
+      }
+    };
+    
+    // Draw circle at current position
+    drawCircle(currX, currY, radius);
+    
+    // Fill gap between last point and current point
+    const dx = currX - lastX;
+    const dy = currY - lastY;
+    const distance = Math.sqrt(dx * dx + dy * dy);
+    
+    if (distance > 0 && distance < radius * 2) {
+      const steps = Math.ceil(distance);
+      for (let i = 1; i < steps; i++) {
+        const t = i / steps;
+        const px = Math.floor(lastX + dx * t);
+        const py = Math.floor(lastY + dy * t);
+        drawCircle(px, py, radius);
+      }
+    }
+    
+    // Put modified image data back
+    ctx.putImageData(imageData, 0, 0);
+    
     lastPointRef.current = { ...lastPointRef.current, x, y };
+    // #region agent log
+    fetch('http://127.0.0.1:7244/ingest/65d6f4cb-b1f9-40ab-b782-b00f922cdb85',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:595',message:'Brush stroke drawn (direct pixel)',data:{smoothingEnabled:ctx.imageSmoothingEnabled,brushSize,radius,distance},timestamp:Date.now(),sessionId:'debug-session',runId:'cursor-fix2',hypothesisId:'G'})}).catch(()=>{});
+    // #endregion
   };
 
   const performFloodFill = (startX, startY) => {
     const drawCtx = drawCanvasRef.current.getContext('2d');
     const lineCtx = linesCanvasRef.current.getContext('2d');
-    const width = 800;
-    const height = 800;
+    // Use actual canvas size (1024 if image loaded, 800 otherwise)
+    const width = drawCanvasRef.current.width;
+    const height = drawCanvasRef.current.height;
 
     const drawData = drawCtx.getImageData(0, 0, width, height);
     const lineData = lineCtx.getImageData(0, 0, width, height);
@@ -301,34 +626,84 @@ const App = () => {
     const fillColor = hexToRgb(selectedColor);
 
     if (!targetColor || !fillColor) return;
-    if (colorsMatch(targetColor, [fillColor.r, fillColor.g, fillColor.b, 255])) return;
+    
+    // Don't fill if already the same color
+    if (colorsMatch(targetColor, [fillColor.r, fillColor.g, fillColor.b, 255], 5)) return;
 
+    // Check if we clicked on a line - very strict threshold
     const startLineColor = getPixel(lineData, startX, startY);
-    if (startLineColor[3] > 150) return; 
+    if (startLineColor && startLineColor[3] > 30) return; // Very strict: any visible line blocks fill
 
-    const pixelsToCheck = [startX, startY];
+    // Only fill pure white areas - very strict check
+    const isPureWhite = (color) => {
+      return color[0] === 255 && color[1] === 255 && color[2] === 255;
+    };
+    
+    if (!isPureWhite(targetColor)) return; // Only fill pure white areas
+
+    // Get the exact target color for matching (must match exactly)
+    const targetR = targetColor[0];
+    const targetG = targetColor[1];
+    const targetB = targetColor[2];
+
+    const visited = new Set();
+    const pixelsToCheck = [[startX, startY]];
+
     while (pixelsToCheck.length > 0) {
-      const y = pixelsToCheck.pop();
-      const x = pixelsToCheck.pop();
+      const [x, y] = pixelsToCheck.pop();
+      const key = `${x},${y}`;
+      
+      if (visited.has(key)) continue;
+      if (x < 0 || x >= width || y < 0 || y >= height) continue;
 
       const currentDrawColor = getPixel(drawData, x, y);
       const currentLineColor = getPixel(lineData, x, y);
 
-      if (currentDrawColor && colorsMatch(targetColor, currentDrawColor) && currentLineColor[3] < 150) {
-        const index = (y * width + x) * 4;
-        drawData.data[index] = fillColor.r;
-        drawData.data[index + 1] = fillColor.g;
-        drawData.data[index + 2] = fillColor.b;
-        drawData.data[index + 3] = 255;
+      // Very strict: must match exact target color AND be pure white AND no line nearby
+      if (currentDrawColor && 
+          currentDrawColor[0] === targetR && 
+          currentDrawColor[1] === targetG && 
+          currentDrawColor[2] === targetB &&
+          isPureWhite(currentDrawColor) && 
+          currentLineColor && currentLineColor[3] < 30) { // Very strict line threshold
+        
+        // Also check neighbors for lines before filling (prevents bleeding)
+        let hasNearbyLine = false;
+        for (let dx = -1; dx <= 1; dx++) {
+          for (let dy = -1; dy <= 1; dy++) {
+            if (dx === 0 && dy === 0) continue;
+            const nx = x + dx;
+            const ny = y + dy;
+            if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
+              const neighborLine = getPixel(lineData, nx, ny);
+              if (neighborLine && neighborLine[3] > 100) {
+                hasNearbyLine = true;
+                break;
+              }
+            }
+          }
+          if (hasNearbyLine) break;
+        }
+        
+        if (!hasNearbyLine) {
+          visited.add(key);
+          
+          const index = (y * width + x) * 4;
+          drawData.data[index] = fillColor.r;
+          drawData.data[index + 1] = fillColor.g;
+          drawData.data[index + 2] = fillColor.b;
+          drawData.data[index + 3] = 255;
 
-        if (x > 0) pixelsToCheck.push(x - 1, y);
-        if (x < width - 1) pixelsToCheck.push(x + 1, y);
-        if (y > 0) pixelsToCheck.push(x, y - 1);
-        if (y < height - 1) pixelsToCheck.push(x, y + 1);
+          // Add neighbors
+          pixelsToCheck.push([x - 1, y]);
+          pixelsToCheck.push([x + 1, y]);
+          pixelsToCheck.push([x, y - 1]);
+          pixelsToCheck.push([x, y + 1]);
+        }
       }
     }
     drawCtx.putImageData(drawData, 0, 0);
-    saveToHistory();
+    // Don't save here - let stopInteraction handle it to avoid double save
   };
 
   const getPixel = (p, x, y) => {
@@ -337,7 +712,7 @@ const App = () => {
     return [p.data[i], p.data[i + 1], p.data[i + 2], p.data[i + 3]];
   };
 
-  const colorsMatch = (c1, c2, t = 45) => 
+  const colorsMatch = (c1, c2, t = 5) => 
     Math.abs(c1[0] - c2[0]) <= t && Math.abs(c1[1] - c2[1]) <= t && Math.abs(c1[2] - c2[2]) <= t;
 
   const hexToRgb = (hex) => {
@@ -365,8 +740,12 @@ const App = () => {
 
   const handleSave = () => {
     const final = document.createElement('canvas');
-    final.width = 800; final.height = 800;
+    const canvasWidth = drawCanvasRef.current.width;
+    const canvasHeight = drawCanvasRef.current.height;
+    final.width = canvasWidth;
+    final.height = canvasHeight;
     const fCtx = final.getContext('2d');
+    fCtx.imageSmoothingEnabled = false;
     fCtx.drawImage(drawCanvasRef.current, 0, 0); 
     fCtx.drawImage(linesCanvasRef.current, 0, 0);
     const link = document.createElement('a'); 
@@ -377,8 +756,12 @@ const App = () => {
 
   const handlePrint = () => {
     const final = document.createElement('canvas');
-    final.width = 800; final.height = 800;
+    const canvasWidth = drawCanvasRef.current.width;
+    const canvasHeight = drawCanvasRef.current.height;
+    final.width = canvasWidth;
+    final.height = canvasHeight;
     const fCtx = final.getContext('2d');
+    fCtx.imageSmoothingEnabled = false;
     fCtx.drawImage(drawCanvasRef.current, 0, 0); 
     fCtx.drawImage(linesCanvasRef.current, 0, 0);
     const dataUrl = final.toDataURL();
@@ -427,6 +810,11 @@ const App = () => {
                 {isGenerating ? <Loader2 className="animate-spin" /> : <Search />}
               </button>
             </div>
+            {isCached && (
+              <div className="mt-2 text-xs text-green-600 font-medium flex items-center gap-1">
+                <span>✓</span> Loaded from cache (free!)
+              </div>
+            )}
           </div>
 
           <div className="bg-white p-5 rounded-3xl shadow-lg border-4 border-white">
@@ -517,9 +905,9 @@ const App = () => {
                 <h3 className="text-2xl font-black text-slate-700">Magical Art in Progress...</h3>
               </div>
             )}
-            <div style={{ transform: `scale(${zoom}) translate(${pan.x}px, ${pan.y}px)`, transformOrigin: 'center center', transition: isInteractingRef.current ? 'none' : 'transform 0.1s ease-out' }} className="absolute inset-0 w-full h-full">
-              <canvas ref={drawCanvasRef} className="absolute inset-0 w-full h-full bg-white pointer-events-none" />
-              <canvas ref={linesCanvasRef} onPointerDown={startInteraction} onPointerMove={handlePointerMove} onPointerUp={stopInteraction} onPointerLeave={stopInteraction} className="absolute inset-0 w-full h-full touch-none" />
+            <div style={{ transform: `scale(${zoom}) translate(${pan.x}px, ${pan.y}px)`, transformOrigin: 'center center', transition: isInteractingRef.current ? 'none' : 'transform 0.1s ease-out', willChange: 'transform', imageRendering: 'crisp-edges', WebkitImageRendering: 'crisp-edges' }} className="absolute inset-0 w-full h-full">
+              <canvas ref={drawCanvasRef} style={{ imageRendering: 'crisp-edges', WebkitImageRendering: 'crisp-edges' }} className="absolute inset-0 w-full h-full bg-white pointer-events-none" />
+              <canvas ref={linesCanvasRef} style={{ imageRendering: 'crisp-edges', WebkitImageRendering: 'crisp-edges' }} onPointerDown={startInteraction} onPointerMove={handlePointerMove} onPointerUp={stopInteraction} onPointerLeave={stopInteraction} className="absolute inset-0 w-full h-full touch-none" />
             </div>
             {!imageLoaded && !isGenerating && (
               <div className="absolute inset-0 z-10 flex flex-col items-center justify-center text-slate-300 pointer-events-none">

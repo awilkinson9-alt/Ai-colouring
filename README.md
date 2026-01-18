@@ -4,7 +4,7 @@ An interactive AI-powered coloring book application that generates coloring page
 
 ## Features
 
-- 🎨 **AI-Generated Coloring Pages**: Generate coloring book illustrations from text prompts using Google's Imagen API
+- 🎨 **AI-Generated Coloring Pages**: Generate coloring book illustrations from text prompts using Hugging Face's free AI models
 - 🖌️ **Multiple Tools**: 
   - Paint Bucket (Flood Fill)
   - Brush Tool
@@ -21,9 +21,12 @@ An interactive AI-powered coloring book application that generates coloring page
 npm install
 ```
 
-2. Set up your Google API key:
-   - Create a `.env` file in the root directory
-   - Add your API key: `VITE_GOOGLE_API_KEY=your_api_key_here`
+2. (Optional) Set up Hugging Face API key for higher rate limits:
+   - Sign up for a free account at: https://huggingface.co (completely free!)
+   - Go to: https://huggingface.co/settings/tokens
+   - Create a new token (read access is enough)
+   - Add to `.env` file: `VITE_HUGGINGFACE_API_KEY=your_token_here`
+   - Note: Works without API key but has lower rate limits
 
 3. Run the development server:
 ```bash
@@ -51,7 +54,7 @@ npm run build
 - Vite
 - Tailwind CSS
 - Lucide React (Icons)
-- Google Imagen API
+- Hugging Face Inference API (Free Image Generation)
 
 ## Notes
 

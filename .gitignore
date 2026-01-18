@@ -27,3 +27,12 @@ dist-ssr
 .env
 .env.local
 .env.production
+
+# Service account keys (NEVER commit these!)
+*.json
+!package.json
+!package-lock.json
+!tsconfig.json
+!tailwind.config.js
+!postcss.config.js
+!vite.config.js
