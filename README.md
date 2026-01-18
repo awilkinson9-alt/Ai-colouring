@@ -1,5 +1,7 @@
 # AI Coloring Magic 🎨
 
+Updated: $(date)
+
 An interactive AI-powered coloring book application that generates coloring pages from text prompts and lets you color them with a variety of tools.
 
 ## Features
